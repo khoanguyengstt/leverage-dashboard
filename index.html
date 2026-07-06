@@ -817,7 +817,16 @@ function renderHoldings(deals){
 }
 
 /* ================= TRANG KHÁCH HÀNG (từ Key in, deal ON) ================= */
-let custPie, uPie, cuNavChart, __custRows=[], __navBatch=[], __cuHist=[], cuRange=30;
+let custPie, uPie, cuNavChart, __custRows=[], __navBatch=[], __cuHist=[], __apiPrice={}, cuRange=30;
+function loadAPI(rows){ // sheet API: A=mã, C=giá real-time
+  __apiPrice={};
+  for(const r of rows){
+    const t=cellStr(r[0]), p=cellNum(r[2]);
+    if(t&&p>0) __apiPrice[t]=p;
+  }
+  renderCustomerPage();
+  renderUpdatePage();
+}
 function fillCustSelects(){
   const names=new Set(__custRows.map(r=>r.cust));
   if(__nrt) Object.keys(__nrt).forEach(n=>names.add(n));
@@ -874,9 +883,10 @@ function renderCustomerPage(){
     if(r.buyDate<pw) o.avail+=r.qty;
   }
   const list=Object.entries(stocks).map(([t,o])=>{
+    const cur=__apiPrice[t]||o.cur; // ưu tiên giá real-time từ sheet API
     const avg=o.buyVal/o.qty; // giá vốn gồm phí (như C16 = SUMIFS J / KL)
-    const pnl=o.short?(avg-o.cur)*o.qty:(o.cur-avg)*o.qty;
-    return {t, qty:o.qty, avail:o.avail, avg, cur:o.cur, mkt:o.cur*o.qty,
+    const pnl=o.short?(avg-cur)*o.qty:(cur-avg)*o.qty;
+    return {t, qty:o.qty, avail:o.avail, avg, cur, mkt:cur*o.qty,
       pnl, pct:o.buyVal?pnl/o.buyVal:0, short:o.short};
   }).sort((a,b)=>b.mkt-a.mkt);
   const mkt=list.reduce((a,s)=>a+s.mkt,0);
@@ -949,9 +959,10 @@ function renderUpdatePage(){
     if(r.short) o.short=true;
   }
   const list=Object.entries(stocks).map(([t,o])=>{
+    const cur=__apiPrice[t]||o.cur; // ưu tiên giá real-time từ sheet API
     const avg=o.buyVal/o.qty;
-    const pnl=o.short?(avg-o.cur)*o.qty:(o.cur-avg)*o.qty;
-    return {t, qty:o.qty, avg, cur:o.cur, mkt:o.cur*o.qty, pnl, pct:o.buyVal?pnl/o.buyVal:0};
+    const pnl=o.short?(avg-cur)*o.qty:(cur-avg)*o.qty;
+    return {t, qty:o.qty, avg, cur, mkt:cur*o.qty, pnl, pct:o.buyVal?pnl/o.buyVal:0};
   }).sort((a,b)=>b.mkt-a.mkt);
   const mkt=list.reduce((a,s)=>a+s.mkt,0);
   const nrt=__nrt&&__nrt[name];
@@ -1067,7 +1078,8 @@ async function loadAll(){
     fetchSheetJSON('NAV - Batch').then(renderInterest),
     fetchSheetJSON('Key in').then(renderInsight),
     fetchSheetJSON('NAV - Real Time').then(loadNRT),
-    fetchSheetJSON('Check End day').then(loadCED)
+    fetchSheetJSON('Check End day').then(loadCED),
+    fetchSheetJSON('API').then(loadAPI)
   ];
   const res=await Promise.allSettled(jobs);
   const errs=res.filter(r=>r.status==='rejected');
